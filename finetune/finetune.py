@@ -225,56 +225,56 @@ def train():
         trust_remote_code=True,
         torch_dtype=compute_dtype,
         device_map=device_map,
-    )
+    )#模型加载
 
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.model_name_or_path, trust_remote_code=True
-    )
+    )#tokenizer加载
 
     if not training_args.tune_vision:
         model.vpm.requires_grad_(False)
     if not training_args.tune_llm:
         model.llm.requires_grad_(False)
         
-    if training_args.use_lora:
-        if training_args.use_lora and training_args.tune_llm:
-            raise ValueError("The model cannot simultaneously adjust LLM parameters and apply LoRA.")
+    # if training_args.use_lora:
+    #     if training_args.use_lora and training_args.tune_llm:
+    #         raise ValueError("The model cannot simultaneously adjust LLM parameters and apply LoRA.")
             
-        rank0_print("Currently using LoRA for fine-tuning the MiniCPM-V model.")
-        for name, param in model.llm.named_parameters():
-            param.requires_grad = False
-        lora_config = LoraConfig(
-            r=lora_args.lora_r,
-            lora_alpha=lora_args.lora_alpha,
-            target_modules=lora_args.lora_target_modules,
-            lora_dropout=lora_args.lora_dropout,
-            bias=lora_args.lora_bias,
-            layers_to_transform=lora_args.lora_layers_to_transform,
-            task_type="CAUSAL_LM",
-        )
-        if training_args.gradient_checkpointing:
-            def get_input_embeddings(self):
-                return self.llm.get_input_embeddings()
-            model.get_input_embeddings = MethodType(get_input_embeddings, model)
-        model = get_peft_model(model, lora_config)
-        model.base_model.llm.model.embed_tokens.weight.requires_grad_(True)
-        if training_args.gradient_checkpointing:
-            model.enable_input_require_grads()
+    #     rank0_print("Currently using LoRA for fine-tuning the MiniCPM-V model.")
+    #     for name, param in model.llm.named_parameters():
+    #         param.requires_grad = False
+    #     lora_config = LoraConfig(
+    #         r=lora_args.lora_r,
+    #         lora_alpha=lora_args.lora_alpha,
+    #         target_modules=lora_args.lora_target_modules,
+    #         lora_dropout=lora_args.lora_dropout,
+    #         bias=lora_args.lora_bias,
+    #         layers_to_transform=lora_args.lora_layers_to_transform,
+    #         task_type="CAUSAL_LM",
+    #     )
+    #     if training_args.gradient_checkpointing:
+    #         def get_input_embeddings(self):
+    #             return self.llm.get_input_embeddings()
+    #         model.get_input_embeddings = MethodType(get_input_embeddings, model)
+    #     model = get_peft_model(model, lora_config)
+    #     model.base_model.llm.model.embed_tokens.weight.requires_grad_(True)
+    #     if training_args.gradient_checkpointing:
+    #         model.enable_input_require_grads()
 
     rank0_print(get_parameter_number(model))
 
     llm_type = training_args.llm_type    
-    if llm_type == "llama3":
+    if llm_type == "llama3":#llama3的chat_template，在tokenizer里设置
         tokenizer.chat_template = "{% set loop_messages = messages %}{% for message in loop_messages %}{% set content = '<|start_header_id|>' + message['role'] + '<|end_header_id|>\n\n'+ message['content'] | trim + '<|eot_id|>' %}{% if loop.index0 == 0 %}{% set content = bos_token + content %}{% endif %}{{ content }}{% endfor %}"
     
     rank0_print(f'llm_type={llm_type}')
 
     # Load data
-    if hasattr(model.config, "slice_config"):
+    if hasattr(model.config, "slice_config"):#如果要图片切片，导入一下切片配置
         slice_config = model.config.slice_config.to_dict()
     else:
         slice_config = model.config.to_dict()
-    if hasattr(model.config, "batch_vision_input"):
+    if hasattr(model.config, "batch_vision_input"):#如果要批量处理图片，batch_vision设为True
         batch_vision = model.config.batch_vision_input
     else:
         batch_vision = False
@@ -290,7 +290,7 @@ def train():
         query_nums=model.config.query_num,
         batch_vision=batch_vision,
         max_length=training_args.model_max_length,
-    )
+    )#返回训练和测试用的dataset和collator
     
     trainer = CPMTrainer(
         model=model,
